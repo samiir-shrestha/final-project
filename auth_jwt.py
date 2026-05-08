@@ -1,7 +1,7 @@
-﻿from jose import jwt
+from jose import jwt
 from datetime import datetime, timedelta
 
-SECRET_KEY = "agripulse-secret-2024"
+SECRET_KEY = "your_secret_key"
 ALGORITHM = "HS256"
 
 def create_token(data: dict):

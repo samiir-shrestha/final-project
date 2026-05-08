@@ -1,6 +1,7 @@
-﻿from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer
 from jose import jwt
+
 from auth_jwt import SECRET_KEY, ALGORITHM
 
 security = HTTPBearer()
