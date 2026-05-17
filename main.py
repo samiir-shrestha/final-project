@@ -147,6 +147,7 @@ class PredictRequest(BaseModel):
     crop_growth_stage: str
     season: str
     irrigation_type: str
+    application_date: str   # YYYY-MM-DD — date user plans to apply fertilizer
 
 
 # =========================
@@ -270,8 +271,25 @@ def predict(
         raise HTTPException(status_code=400, detail=f"Soil error: {soil['error']}")
 
     # 2. Weather
-    weather = get_weather(data.lat, data.lon, data.season)
+    weather = get_weather(data.lat, data.lon, data.season, data.application_date)
     weather.pop("_fallback", None)
+
+    # 2a. Rain alert check — if >20mm forecast in 48 hours, withhold recommendation
+    rain_alert  = weather.pop("rain_alert", False)
+    rainfall_48h = weather.pop("Rainfall_48h", 0.0)
+
+    if rain_alert:
+        return {
+            "rain_alert"  : True,
+            "rainfall_48h": rainfall_48h,
+            "message"     : (
+                f"Heavy rainfall of {rainfall_48h}mm is forecast in the next 48 hours. "
+                "Applying fertilizer now risks nutrient washoff and water pollution. "
+                "Please wait until rainfall subsides before applying."
+            ),
+            "weather"     : weather,
+            "soil"        : soil,
+        }
 
     # 3. Encode features
     try:
@@ -314,6 +332,9 @@ def predict(
         "dosage_ropani"    : dosage_ropani,
         "dosage_ha"        : dosage_ha,
         "basis"            : basis,
+        "rain_alert"       : False,
+        "rainfall_48h"     : rainfall_48h,
+        "application_date" : data.application_date,
         "crop_growth_stage": data.crop_growth_stage,
         "season"           : data.season,
         "irrigation_type"  : data.irrigation_type,
@@ -322,11 +343,12 @@ def predict(
     }
 
     rec = Recommendation(
-        user_id = user["id"],
-        crop    = data.crop_type,
-        lat     = str(data.lat),
-        lon     = str(data.lon),
-        result  = json.dumps(result_payload),
+        user_id          = user["id"],
+        crop             = data.crop_type,
+        lat              = str(data.lat),
+        lon              = str(data.lon),
+        result           = json.dumps(result_payload),
+        application_date = data.application_date,
     )
     db.add(rec)
     db.commit()
@@ -340,11 +362,12 @@ def get_recommendations(db: Session = Depends(get_db), user=Depends(get_current_
     recs = db.query(Recommendation).filter(Recommendation.user_id == user["id"]).all()
     return [
         {
-            "id"        : r.id,
-            "crop"      : r.crop,
-            "lat"       : r.lat,
-            "lon"       : r.lon,
-            "created_at": str(r.created_at),
+            "id"              : r.id,
+            "crop"            : r.crop,
+            "lat"             : r.lat,
+            "lon"             : r.lon,
+            "created_at"      : str(r.created_at),
+            "application_date": r.application_date,
             **json.loads(r.result),
         }
         for r in recs
